@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Industrial Machine Telemetry & Remote Mobile Diagnostics</title>
+  
+  <!-- Web App Manifest for Mobile PWA Install -->
+  <meta name="theme-color" content="#090d16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FactoryHQ">
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+    body {
+      font-family: 'Chakra Petch', sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom scanline effect for CCTV feeds */
+    .cctv-container {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .cctv-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* Glow status effects */
+    .glow-green { box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
+    .glow-yellow { box-shadow: 0 0 15px rgba(234, 179, 8, 0.35); }
+    .glow-orange { box-shadow: 0 0 15px rgba(249, 115, 22, 0.35); }
+    .glow-red { box-shadow: 0 0 18px rgba(239, 68, 68, 0.45); }
+
+    /* Touch-friendly Range Sliders */
+    input[type=range] {
+      accent-color: #38bdf8;
+      height: 8px;
+    }
+
+    /* Modal Backdrop Transitions */
+    .modal-backdrop {
+      backdrop-filter: blur(8px);
+      background-color: rgba(3, 7, 18, 0.85);
+    }
+
+    /* Hide scrollbar for clean mobile tabs */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-24 md:pb-12 select-none">
+
+  <!-- Top Navigation & Global Header -->
+  <header class="bg-slate-900/95 border-b border-slate-800 sticky top-0 z-40 backdrop-blur-md shadow-xl">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        
+        <!-- Dashboard Title & Mobile App Indicator -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div class="p-2 bg-cyan-950 border border-cyan-500/40 rounded-xl text-cyan-400">
+              <i class="fa-solid fa-industry text-xl"></i>
+            </div>
+            <div>
+              <h1 class="text-base sm:text-lg font-bold tracking-wide text-white uppercase flex items-center gap-2">
+                Factory Telemetry
+                <span id="remote-pill" class="text-[10px] font-mono px-2 py-0.5 bg-emerald-950 border border-emerald-600/50 text-emerald-400 rounded-full flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> MOBILE SYNC
+                </span>
+              </h1>
+              <p class="text-[11px] text-slate-400">4-Axis Machine Monitor & Mobile Push Alerts</p>
+            </div>
+          </div>
+
+          <!-- Mobile Action Quick Buttons -->
+          <div class="flex md:hidden items-center space-x-1.5">
+            <button onclick="openAlertSettingsModal()" class="p-2 bg-slate-800 text-cyan-400 rounded-lg text-xs border border-slate-700" title="Alert Settings">
+              <i class="fa-solid fa-bell"></i>
+            </button>
+            <button onclick="openRemoteGuideModal()" class="p-2 bg-indigo-950 text-indigo-300 rounded-lg text-xs border border-indigo-800" title="Connect Phone">
+              <i class="fa-solid fa-mobile-screen"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Global Metrics Summary Cards -->
+        <div class="grid grid-cols-3 gap-2 bg-slate-950/80 p-1.5 sm:p-2 rounded-xl border border-slate-800 text-center">
+          <div class="px-2 py-0.5 border-r border-slate-800">
+            <span class="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider block">Total Items</span>
+            <span id="global-total-count" class="text-base sm:text-xl font-bold font-mono text-cyan-400">0</span>
+          </div>
+          <div class="px-2 py-0.5 border-r border-slate-800">
+            <span class="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider block">CCTV Live</span>
+            <span id="global-active-count" class="text-base sm:text-xl font-bold font-mono text-emerald-400">0 / 4</span>
+          </div>
+          <div class="px-2 py-0.5">
+            <span class="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider block">Faults</span>
+            <span id="global-alert-count" class="text-base sm:text-xl font-bold font-mono text-rose-400">0</span>
+          </div>
+        </div>
+
+        <!-- Desktop Action Buttons -->
+        <div class="hidden md:flex items-center space-x-2">
+          <button onclick="openAlertSettingsModal()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg text-xs font-semibold border border-slate-700 flex items-center space-x-1.5">
+            <i class="fa-solid fa-bell"></i>
+            <span>Push Config</span>
+          </button>
+
+          <button onclick="openRemoteGuideModal()" class="px-3 py-2 bg-indigo-950 hover:bg-indigo-900 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-800 flex items-center space-x-1.5">
+            <i class="fa-solid fa-mobile-screen"></i>
+            <span>Connect Phone</span>
+          </button>
+
+          <button id="master-sim-btn" onclick="toggleGlobalSimulation()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-lg shadow-indigo-600/20">
+            <i class="fa-solid fa-play" id="master-sim-icon"></i>
+            <span id="master-sim-text">Simulate</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Tab Switcher (Visible on Phones & Tablets) -->
+  <div class="md:hidden bg-slate-950 border-b border-slate-800 sticky top-[57px] z-30 px-3 py-2">
+    <div class="flex space-x-2 overflow-x-auto no-scrollbar" id="mobile-tab-bar">
+      <button onclick="setMobileTab('all')" id="tab-btn-all" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-950 border border-cyan-500/50 text-cyan-300">
+        All Machines (Grid)
+      </button>
+      <button onclick="setMobileTab(1)" id="tab-btn-1" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400">
+        Machine #1
+      </button>
+      <button onclick="setMobileTab(2)" id="tab-btn-2" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400">
+        Machine #2
+      </button>
+      <button onclick="setMobileTab(3)" id="tab-btn-3" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400">
+        Machine #3
+      </button>
+      <button onclick="setMobileTab(4)" id="tab-btn-4" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400">
+        Machine #4
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Install Banner / Quick Alert Test -->
+  <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3">
+    <div id="pwa-install-banner" class="hidden bg-gradient-to-r from-indigo-950 via-slate-900 to-cyan-950 border border-indigo-500/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 shadow-xl">
+      <div class="flex items-center space-x-2.5">
+        <i class="fa-solid fa-cloud-arrow-down text-indigo-400 text-xl"></i>
+        <div>
+          <h3 class="text-xs font-bold text-white">Install Desktop/Mobile App</h3>
+          <p class="text-[11px] text-slate-300">Add FactoryHQ to your phone home screen for instant full-screen app access.</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button onclick="triggerPwaInstall()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold">
+          Install App
+        </button>
+        <button onclick="dismissPwaBanner()" class="text-slate-400 hover:text-white px-2 py-1 text-xs">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-4">
+    <div id="machine-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <!-- Machine Cards Rendered Dynamically -->
+    </div>
+  </main>
+
+  <!-- Mobile Fixed Bottom Dock -->
+  <div class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 border-t border-slate-800 z-40 px-4 py-2 flex items-center justify-around backdrop-blur-md">
+    <button onclick="setMobileTab('all')" class="flex flex-col items-center text-slate-400 hover:text-cyan-400 focus:text-cyan-400">
+      <i class="fa-solid fa-border-all text-base"></i>
+      <span class="text-[10px] mt-0.5">Overview</span>
+    </button>
+    <button onclick="triggerSoundAlertTest()" class="flex flex-col items-center text-slate-400 hover:text-amber-400">
+      <i class="fa-solid fa-volume-high text-base"></i>
+      <span class="text-[10px] mt-0.5">Test Audio</span>
+    </button>
+    <button onclick="openAlertSettingsModal()" class="flex flex-col items-center text-slate-400 hover:text-cyan-400">
+      <i class="fa-solid fa-paper-plane text-base"></i>
+      <span class="text-[10px] mt-0.5">Test Push</span>
+    </button>
+    <button onclick="openRemoteGuideModal()" class="flex flex-col items-center text-slate-400 hover:text-indigo-400">
+      <i class="fa-solid fa-network-wired text-base"></i>
+      <span class="text-[10px] mt-0.5">Tailscale</span>
+    </button>
+  </div>
+
+  <!-- MODAL 1: Telegram & Pushover Notification Configuration -->
+  <div id="alert-settings-modal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-paper-plane text-cyan-400 text-lg"></i>
+          <h3 class="font-bold text-white text-base">Mobile Push Alert Setup</h3>
+        </div>
+        <button onclick="closeAlertSettingsModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Form Body -->
+      <div class="p-5 overflow-y-auto space-y-4 font-sans">
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Connect your Telegram Bot or Pushover account to automatically receive instant push alerts on your smartphone when motor wear or voltage anomalies are detected.
+        </p>
+
+        <!-- Push Alert Toggle -->
+        <div class="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+          <div>
+            <span class="text-xs font-semibold text-white block">Enable Phone Notifications</span>
+            <span class="text-[10px] text-slate-400">Send alerts automatically when fault occurs</span>
+          </div>
+          <input type="checkbox" id="push-alerts-enabled" class="w-5 h-5 accent-cyan-500 rounded cursor-pointer" checked>
+        </div>
+
+        <!-- Telegram Config Section -->
+        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-3">
+          <div class="flex items-center space-x-2 text-cyan-400 text-xs font-bold uppercase tracking-wider">
+            <i class="fa-brands fa-telegram text-base"></i>
+            <span>Option 1: Telegram Bot</span>
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Telegram Bot Token</label>
+            <input type="text" id="tg-bot-token" placeholder="e.g., 123456789:ABCdefGhIJKlmNoPQ..." 
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500">
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Telegram Chat ID</label>
+            <input type="text" id="tg-chat-id" placeholder="e.g., 987654321" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500">
+          </div>
+        </div>
+
+        <!-- Pushover Config Section -->
+        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-3">
+          <div class="flex items-center space-x-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
+            <i class="fa-solid fa-mobile-retro text-base"></i>
+            <span>Option 2: Pushover User Key</span>
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Pushover User Key</label>
+            <input type="text" id="pushover-user-key" placeholder="e.g., uQi9302193..." 
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <!-- Audio Alarm Toggle -->
+        <div class="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+          <div>
+            <span class="text-xs font-semibold text-white block">Office Speaker Audio Alarm</span>
+            <span class="text-[10px] text-slate-400">Play synthetic siren sound on PC during critical errors</span>
+          </div>
+          <input type="checkbox" id="audio-alarm-enabled" class="w-5 h-5 accent-cyan-500 rounded cursor-pointer" checked>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex justify-between items-center">
+        <button onclick="triggerTestPushNotification()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg text-xs font-semibold border border-slate-700 flex items-center space-x-1.5">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>Send Test Alert</span>
+        </button>
+        <button onclick="saveAlertSettings()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-cyan-600/20">
+          Save Settings
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL 2: Tailscale Remote Access Setup Guide -->
+  <div id="remote-guide-modal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-shield-halved text-indigo-400 text-lg"></i>
+          <h3 class="font-bold text-white text-base">Remote Phone Access via Tailscale</h3>
+        </div>
+        <button onclick="closeRemoteGuideModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Tutorial Content -->
+      <div class="p-5 overflow-y-auto space-y-4 text-xs font-sans text-slate-300">
+        <div class="p-3 bg-indigo-950/60 border border-indigo-500/30 rounded-xl text-indigo-200">
+          <i class="fa-solid fa-lock mr-1.5"></i>
+          <strong>No Router Port Forwarding Required!</strong> Tailscale creates a safe, encrypted VPN connection between your home phone and shop PC.
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex space-x-3 items-start">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">1</span>
+            <div>
+              <strong class="text-white block font-semibold text-xs">Install Tailscale on Shop PC</strong>
+              <p class="text-[11px] text-slate-400 mt-0.5">Download free Tailscale software onto your office computer from <code>tailscale.com</code> and sign in.</p>
+            </div>
+          </div>
+
+          <div class="flex space-x-3 items-start">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">2</span>
+            <div>
+              <strong class="text-white block font-semibold text-xs">Install Tailscale App on Phone</strong>
+              <p class="text-[11px] text-slate-400 mt-0.5">Install the Tailscale app on your iPhone or Android from App Store / Google Play and sign into the same account.</p>
+            </div>
+          </div>
+
+          <div class="flex space-x-3 items-start">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">3</span>
+            <div>
+              <strong class="text-white block font-semibold text-xs">Copy Your PC's Tailscale IP Address</strong>
+              <p class="text-[11px] text-slate-400 mt-0.5">Tailscale assigns a private 100.x.x.x IP address to your office PC (e.g. <code>100.80.20.15</code>).</p>
+            </div>
+          </div>
+
+          <div class="flex space-x-3 items-start">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">4</span>
+            <div>
+              <strong class="text-white block font-semibold text-xs">Open Dashboard on Phone at Home</strong>
+              <p class="text-[11px] text-slate-400 mt-0.5">Type your PC's Tailscale IP into Safari or Chrome on your mobile phone while away from the shop to view live feeds!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex justify-end">
+        <button onclick="closeRemoteGuideModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold">
+          Got It
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div id="toast-container" class="fixed bottom-16 md:bottom-5 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+  <script>
+    
+    /* Global Machine State Array */
+    const machinesData = [
+      {
+        id: 1,
+        name: "CNC Milling Station A1",
+        rtspUrl: "rtsp://192.168.1.101/live/ch0",
+        count: 142,
+        rate: 18,
+        amps: 8.4,
+        volts: 118.2,
+        cameraOnline: true,
+        autoSim: true,
+        lastAlertSent: 0,
+        diagState: 'STABLE'
+      },
+      {
+        id: 2,
+        name: "Automated Press B4",
+        rtspUrl: "rtsp://192.168.1.102/live/ch0",
+        count: 89,
+        rate: 12,
+        amps: 13.5, // High amps default
+        volts: 119.0,
+        cameraOnline: true,
+        autoSim: false,
+        lastAlertSent: 0,
+        diagState: 'MOTOR WEAR WARNING'
+      },
+      {
+        id: 3,
+        name: "Assembly Robotic Arm C2",
+        rtspUrl: "rtsp://192.168.1.103/live/ch0",
+        count: 310,
+        rate: 25,
+        amps: 6.8,
+        volts: 104.5, // Low voltage default
+        cameraOnline: true,
+        autoSim: false,
+        lastAlertSent: 0,
+        diagState: 'CONTROL BOARD / POWER ISSUE'
+      },
+      {
+        id: 4,
+        name: "Packaging Line D1",
+        rtspUrl: "rtsp://192.168.1.104/live/ch0",
+        count: 205,
+        rate: 15,
+        amps: 14.2, // Both faults
+        volts: 128.5,
+        cameraOnline: true,
+        autoSim: false,
+        lastAlertSent: 0,
+        diagState: 'CRITICAL MULTI-FAULT'
+      }
+    ];
+
+    let globalSimulating = true;
+    let currentMobileTab = 'all';
+    let deferredPwaPrompt = null;
+
+    // Notification Configuration Settings
+    let pushConfig = {
+      enabled: true,
+      tgBotToken: "",
+      tgChatId: "",
+      pushoverUserKey: "",
+      audioAlarm: true
+    };
+
+    window.onload = function() {
+      // Load saved notification settings if present
+      const savedConfig = localStorage.getItem('factoryhq_push_config');
+      if (savedConfig) {
+        try { pushConfig = JSON.parse(savedConfig); } catch(e){}
+      }
+      populateSettingsForm();
+
+      renderMachineCards();
+      startSimulationLoop();
+      startCanvasRenderLoop();
+
+      // PWA Install Event Handler
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPwaPrompt = e;
+        const banner = document.getElementById('pwa-install-banner');
+        if (banner) banner.classList.remove('hidden');
+      });
+    };
+
+    function renderMachineCards() {
+      const grid = document.getElementById('machine-grid');
+      grid.innerHTML = '';
+
+      machinesData.forEach(m => {
+        const isHiddenOnMobile = (currentMobileTab !== 'all' && currentMobileTab !== m.id);
+
+        const cardHTML = `
+          <div id="card-m${m.id}" class="${isHiddenOnMobile ? 'hidden md:flex' : 'flex'} bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex-col justify-between transition-all duration-300">
+            
+            <!-- Card Header -->
+            <div class="px-4 py-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                <h2 class="font-bold text-white tracking-wide text-xs sm:text-sm">${m.name}</h2>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span id="cam-badge-${m.id}" class="text-[9px] font-mono font-semibold px-2 py-0.5 rounded border ${
+                  m.cameraOnline ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800' : 'bg-rose-950/80 text-rose-400 border-rose-800'
+                }">
+                  <i class="fa-solid fa-video text-[8px] mr-1"></i>${m.cameraOnline ? 'CAM LIVE' : 'OFFLINE'}
+                </span>
+                <button onclick="toggleCameraStatus(${m.id})" class="text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
+                  <i class="fa-solid fa-power-off"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="p-3 sm:p-4 space-y-3">
+              
+              <!-- SECTION 1: Simulated Camera Viewport -->
+              <div class="cctv-container bg-black rounded-xl border border-slate-800 relative h-36 sm:h-44">
+                <div class="cctv-overlay"></div>
+                <canvas id="canvas-cam-${m.id}" class="w-full h-full object-cover"></canvas>
+                
+                <div class="absolute top-2 left-2 z-20 font-mono text-[9px] bg-black/70 px-2 py-0.5 rounded text-emerald-400 border border-emerald-900/50">
+                  <i class="fa-solid fa-circle text-[7px] text-red-500 animate-ping mr-1"></i>LIVE RTSP #0${m.id}
+                </div>
+
+                <div class="absolute bottom-2 left-2 z-20 font-mono text-[9px] bg-black/70 px-2 py-0.5 rounded text-slate-300">
+                  <span id="cam-timestamp-${m.id}">--:--:--</span>
+                </div>
+
+                <button onclick="takeSnapshot(${m.id})" class="absolute bottom-2 right-2 z-20 px-2 py-1 bg-slate-800/90 text-slate-200 rounded text-[10px] font-sans border border-slate-600">
+                  <i class="fa-solid fa-camera mr-1"></i>Snap
+                </button>
+              </div>
+
+              <!-- SECTION 2: Item Counter Section -->
+              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between gap-2">
+                <div>
+                  <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Production Count</span>
+                  <div class="flex items-baseline space-x-1.5 mt-0.5">
+                    <span id="counter-val-${m.id}" class="text-2xl sm:text-3xl font-bold font-mono text-cyan-400">${m.count}</span>
+                    <span class="text-[10px] text-slate-500 font-mono">pcs</span>
+                    <span id="rate-val-${m.id}" class="text-[10px] font-mono text-emerald-400">(${m.rate}/min)</span>
+                  </div>
+                </div>
+
+                <!-- Counter Control Buttons -->
+                <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                  <button onclick="adjustCounter(${m.id}, -1)" class="w-7 h-7 rounded bg-slate-800 text-slate-200 font-bold transition flex items-center justify-center border border-slate-700">
+                    <i class="fa-solid fa-minus text-[10px]"></i>
+                  </button>
+                  <button onclick="adjustCounter(${m.id}, 1)" class="w-7 h-7 rounded bg-cyan-950 text-cyan-300 font-bold transition flex items-center justify-center border border-cyan-800">
+                    <i class="fa-solid fa-plus text-[10px]"></i>
+                  </button>
+                  <button onclick="resetCounter(${m.id})" class="px-2 h-7 rounded bg-slate-800 text-slate-400 text-[10px] border border-slate-700">
+                    <i class="fa-solid fa-rotate-left"></i>
+                  </button>
+                  <button id="sim-toggle-${m.id}" onclick="toggleMachineSim(${m.id})" class="px-2 h-7 rounded text-[10px] transition border ${
+                    m.autoSim ? 'bg-indigo-950 border-indigo-700 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400'
+                  }">
+                    <i class="fa-solid fa-gear ${m.autoSim ? 'animate-spin' : ''}"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- SECTION 3: Telemetry Gauges / Meters -->
+              <div class="grid grid-cols-2 gap-2">
+                
+                <!-- Amps Meter -->
+                <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-[11px] font-semibold text-slate-400 flex items-center">
+                      <i class="fa-solid fa-bolt text-amber-400 mr-1"></i>Amps
+                    </span>
+                    <span id="amp-text-${m.id}" class="font-mono text-xs font-bold text-amber-400">${m.amps.toFixed(1)} A</span>
+                  </div>
+                  <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-1.5">
+                    <div id="amp-bar-${m.id}" class="h-full bg-amber-400 transition-all duration-300" style="width: ${Math.min((m.amps/20)*100, 100)}%"></div>
+                  </div>
+                  <input type="range" min="0" max="20" step="0.1" value="${m.amps}" 
+                    oninput="updateTelemetry(${m.id}, 'amps', this.value)" class="w-full cursor-pointer">
+                </div>
+
+                <!-- Volts Meter -->
+                <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-[11px] font-semibold text-slate-400 flex items-center">
+                      <i class="fa-solid fa-plug text-cyan-400 mr-1"></i>Volts
+                    </span>
+                    <span id="volt-text-${m.id}" class="font-mono text-xs font-bold text-cyan-400">${m.volts.toFixed(1)} V</span>
+                  </div>
+                  <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-1.5">
+                    <div id="volt-bar-${m.id}" class="h-full bg-cyan-400 transition-all duration-300" style="width: ${Math.min((m.volts/150)*100, 100)}%"></div>
+                  </div>
+                  <input type="range" min="80" max="150" step="0.5" value="${m.volts}" 
+                    oninput="updateTelemetry(${m.id}, 'volts', this.value)" class="w-full cursor-pointer">
+                </div>
+
+              </div>
+
+              <!-- SECTION 4: Diagnostics & Fault Box -->
+              <div id="diag-box-${m.id}" class="p-2.5 rounded-xl border transition-all duration-300">
+                <div class="flex items-start space-x-2.5">
+                  <div id="diag-icon-bg-${m.id}" class="p-1.5 rounded-lg flex-shrink-0 mt-0.5">
+                    <i id="diag-icon-${m.id}" class="text-sm"></i>
+                  </div>
+                  <div>
+                    <div class="flex items-center space-x-1.5">
+                      <span id="diag-badge-${m.id}" class="text-[9px] font-bold font-mono px-2 py-0.5 rounded uppercase"></span>
+                    </div>
+                    <p id="diag-desc-${m.id}" class="text-[11px] mt-1 text-slate-300 leading-normal font-sans"></p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        `;
+        grid.insertAdjacentHTML('beforeend', cardHTML);
+      });
+
+      machinesData.forEach(m => evaluateDiagnostics(m.id));
+      updateGlobalCounters();
+    }
+
+    function setMobileTab(tabId) {
+      currentMobileTab = tabId;
+      
+      const tabBtns = document.querySelectorAll('#mobile-tab-bar button');
+      tabBtns.forEach(btn => {
+        btn.className = "flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400";
+      });
+
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activeBtn) {
+        activeBtn.className = "flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-950 border border-cyan-500/50 text-cyan-300";
+      }
+
+      renderMachineCards();
+    }
+
+    function evaluateDiagnostics(id) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+
+      const isHighAmps = m.amps >= 12.0;
+      const isVoltageAnomaly = m.volts < 110.0 || m.volts > 125.0;
+
+      const card = document.getElementById(`card-m${id}`);
+      const diagBox = document.getElementById(`diag-box-${id}`);
+      const diagIconBg = document.getElementById(`diag-icon-bg-${id}`);
+      const diagIcon = document.getElementById(`diag-icon-${id}`);
+      const diagBadge = document.getElementById(`diag-badge-${id}`);
+      const diagDesc = document.getElementById(`diag-desc-${id}`);
+
+      if (!diagBox) return;
+
+      let state = 'STABLE';
+      let desc = '';
+      let badgeClass = '';
+      let boxClass = '';
+      let iconClass = '';
+      let iconBgClass = '';
+
+      if (!isHighAmps && !isVoltageAnomaly) {
+        state = 'STABLE';
+        desc = 'Operating normally. Amps & Voltage within safe thresholds.';
+        badgeClass = 'bg-emerald-950 text-emerald-400 border border-emerald-700';
+        boxClass = 'bg-emerald-950/20 border-emerald-900/60';
+        iconClass = 'fa-solid fa-circle-check text-emerald-400';
+        iconBgClass = 'bg-emerald-950 border border-emerald-800';
+        if (card) card.className = card.className.replace(/glow-\w+/g, '');
+      } 
+      else if (isHighAmps && !isVoltageAnomaly) {
+        state = 'MOTOR WEAR WARNING';
+        desc = 'High current draw (>12A). Motor friction or mechanical wear suspected.';
+        badgeClass = 'bg-yellow-950 text-yellow-400 border border-yellow-700';
+        boxClass = 'bg-yellow-950/20 border-yellow-900/60';
+        iconClass = 'fa-solid fa-triangle-exclamation text-yellow-400';
+        iconBgClass = 'bg-yellow-950 border border-yellow-800';
+        if (card) card.className = card.className.replace(/glow-\w+/g, '') + ' glow-yellow';
+      } 
+      else if (!isHighAmps && isVoltageAnomaly) {
+        state = 'CONTROL BOARD / POWER ISSUE';
+        desc = `Voltage fluctuation (${m.volts.toFixed(1)}V). Inspect PCB control board or relays.`;
+        badgeClass = 'bg-orange-950 text-orange-400 border border-orange-700';
+        boxClass = 'bg-orange-950/20 border-orange-900/60';
+        iconClass = 'fa-solid fa-microchip text-orange-400';
+        iconBgClass = 'bg-orange-950 border border-orange-800';
+        if (card) card.className = card.className.replace(/glow-\w+/g, '') + ' glow-orange';
+      } 
+      else {
+        state = 'CRITICAL MULTI-FAULT';
+        desc = 'CRITICAL: High Amps AND erratic voltage! Risk of motor stall or control board short.';
+        badgeClass = 'bg-rose-950 text-rose-400 border border-rose-700 animate-pulse';
+        boxClass = 'bg-rose-950/30 border-rose-800/80';
+        iconClass = 'fa-solid fa-skull-crossbones text-rose-400';
+        iconBgClass = 'bg-rose-950 border border-rose-800';
+        if (card) card.className = card.className.replace(/glow-\w+/g, '') + ' glow-red';
+      }
+
+      diagBadge.innerText = state;
+      diagBadge.className = `text-[9px] font-bold font-mono px-2 py-0.5 rounded uppercase ${badgeClass}`;
+      diagBox.className = `p-2.5 rounded-xl border transition-all duration-300 ${boxClass}`;
+      diagDesc.innerText = desc;
+      diagIcon.className = iconClass;
+      diagIconBg.className = `p-1.5 rounded-lg flex-shrink-0 mt-0.5 ${iconBgClass}`;
+
+      // Trigger Push Alert if entering new fault state (with 60-second cooldown)
+      if (state !== 'STABLE' && m.diagState !== state) {
+        const now = Date.now();
+        if (now - m.lastAlertSent > 60000) {
+          m.lastAlertSent = now;
+          dispatchPushAlert(`🚨 ALERT: ${m.name}`, `Status: ${state}\n${desc}\nAmps: ${m.amps}A | Volts: ${m.volts}V`);
+          if (pushConfig.audioAlarm) triggerSoundAlert();
+        }
+      }
+
+      m.diagState = state;
+      updateGlobalCounters();
+    }
+
+    function triggerSoundAlert() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } catch(e){}
+    }
+
+    function triggerSoundAlertTest() {
+      triggerSoundAlert();
+      showToast('🔊 Audio Alarm Test Beep Played');
+    }
+
+    function dispatchPushAlert(title, message) {
+      if (!pushConfig.enabled) return;
+
+      // 1. Send Telegram Notification
+      if (pushConfig.tgBotToken && pushConfig.tgChatId) {
+        const text = encodeURIComponent(`<b>${title}</b>\n\n${message}`);
+        const url = `https://api.telegram.org/bot${pushConfig.tgBotToken}/sendMessage?chat_id=${pushConfig.tgChatId}&text=${text}&parse_mode=HTML`;
+        
+        fetch(url).then(res => res.json()).then(data => {
+          if (data.ok) showToast('📱 Telegram Push Alert Sent!');
+        }).catch(() => {});
+      }
+
+      // 2. Send Pushover Notification
+      if (pushConfig.pushoverUserKey) {
+        const formData = new FormData();
+        formData.append('token', 'a1b2c3d4e5f6g7h8i9j0'); // generic fallback or user key
+        formData.append('user', pushConfig.pushoverUserKey);
+        formData.append('title', title);
+        formData.append('message', message);
+
+        fetch('https://api.pushover.net/1/messages.json', {
+          method: 'POST',
+          body: formData
+        }).catch(() => {});
+      }
+
+      showToast(`📢 Alert: ${title}`);
+    }
+
+    function triggerTestPushNotification() {
+      dispatchPushAlert('🧪 TEST ALERT - FactoryHQ', 'This is a test notification sent from your 4-Machine Telemetry Dashboard.');
+      triggerSoundAlert();
+    }
+
+    function updateTelemetry(id, type, val) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+
+      const numVal = parseFloat(val);
+      if (type === 'amps') {
+        m.amps = numVal;
+        const txt = document.getElementById(`amp-text-${id}`);
+        const bar = document.getElementById(`amp-bar-${id}`);
+        if (txt) txt.innerText = `${numVal.toFixed(1)} A`;
+        if (bar) bar.style.width = `${Math.min((numVal/20)*100, 100)}%`;
+      } else if (type === 'volts') {
+        m.volts = numVal;
+        const txt = document.getElementById(`volt-text-${id}`);
+        const bar = document.getElementById(`volt-bar-${id}`);
+        if (txt) txt.innerText = `${numVal.toFixed(1)} V`;
+        if (bar) bar.style.width = `${Math.min((numVal/150)*100, 100)}%`;
+      }
+
+      evaluateDiagnostics(id);
+    }
+
+    function adjustCounter(id, delta) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+      m.count = Math.max(0, m.count + delta);
+      const el = document.getElementById(`counter-val-${id}`);
+      if (el) el.innerText = m.count;
+      updateGlobalCounters();
+    }
+
+    function resetCounter(id) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+      m.count = 0;
+      const el = document.getElementById(`counter-val-${id}`);
+      if (el) el.innerText = 0;
+      updateGlobalCounters();
+    }
+
+    function toggleMachineSim(id) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+      m.autoSim = !m.autoSim;
+      const btn = document.getElementById(`sim-toggle-${id}`);
+      if (btn) {
+        btn.className = `px-2 h-7 rounded text-[10px] transition border ${
+          m.autoSim ? 'bg-indigo-950 border-indigo-700 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400'
+        }`;
+        btn.innerHTML = `<i class="fa-solid fa-gear ${m.autoSim ? 'animate-spin' : ''}"></i>`;
+      }
+    }
+
+    function toggleGlobalSimulation() {
+      globalSimulating = !globalSimulating;
+      machinesData.forEach(m => m.autoSim = globalSimulating);
+      renderMachineCards();
+    }
+
+    function toggleCameraStatus(id) {
+      const m = machinesData.find(item => item.id === id);
+      if (!m) return;
+      m.cameraOnline = !m.cameraOnline;
+      renderMachineCards();
+    }
+
+    function takeSnapshot(id) {
+      showToast(`📸 Snapshot saved for Machine #${id}`);
+    }
+
+    function updateGlobalCounters() {
+      const totalItems = machinesData.reduce((acc, curr) => acc + curr.count, 0);
+      const activeCount = machinesData.filter(m => m.cameraOnline).length;
+      const alertCount = machinesData.filter(m => m.diagState && m.diagState !== 'STABLE').length;
+
+      const totalEl = document.getElementById('global-total-count');
+      const activeEl = document.getElementById('global-active-count');
+      const alertEl = document.getElementById('global-alert-count');
+
+      if (totalEl) totalEl.innerText = totalItems.toLocaleString();
+      if (activeEl) activeEl.innerText = `${activeCount} / 4`;
+      if (alertEl) alertEl.innerText = alertCount;
+    }
+
+    function openAlertSettingsModal() {
+      document.getElementById('alert-settings-modal').classList.remove('hidden');
+    }
+    function closeAlertSettingsModal() {
+      document.getElementById('alert-settings-modal').classList.add('hidden');
+    }
+    function openRemoteGuideModal() {
+      document.getElementById('remote-guide-modal').classList.remove('hidden');
+    }
+    function closeRemoteGuideModal() {
+      document.getElementById('remote-guide-modal').classList.add('hidden');
+    }
+
+    function populateSettingsForm() {
+      document.getElementById('push-alerts-enabled').checked = pushConfig.enabled;
+      document.getElementById('tg-bot-token').value = pushConfig.tgBotToken || "";
+      document.getElementById('tg-chat-id').value = pushConfig.tgChatId || "";
+      document.getElementById('pushover-user-key').value = pushConfig.pushoverUserKey || "";
+      document.getElementById('audio-alarm-enabled').checked = pushConfig.audioAlarm;
+    }
+
+    function saveAlertSettings() {
+      pushConfig.enabled = document.getElementById('push-alerts-enabled').checked;
+      pushConfig.tgBotToken = document.getElementById('tg-bot-token').value.trim();
+      pushConfig.tgChatId = document.getElementById('tg-chat-id').value.trim();
+      pushConfig.pushoverUserKey = document.getElementById('pushover-user-key').value.trim();
+      pushConfig.audioAlarm = document.getElementById('audio-alarm-enabled').checked;
+
+      localStorage.setItem('factoryhq_push_config', JSON.stringify(pushConfig));
+      closeAlertSettingsModal();
+      showToast('✅ Push Notification Settings Saved!');
+    }
+
+    function triggerPwaInstall() {
+      if (deferredPwaPrompt) {
+        deferredPwaPrompt.prompt();
+        deferredPwaPrompt.userChoice.then(() => {
+          deferredPwaPrompt = null;
+          dismissPwaBanner();
+        });
+      } else {
+        showToast('📱 To install on iOS/Android, tap "Add to Home Screen" in browser menu.');
+      }
+    }
+
+    function dismissPwaBanner() {
+      const banner = document.getElementById('pwa-install-banner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    function showToast(message) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = 'px-4 py-2.5 rounded-xl border border-cyan-500/50 bg-slate-900/95 text-xs text-white shadow-2xl backdrop-blur flex items-center space-x-2 pointer-events-auto';
+      toast.innerHTML = `<i class="fa-solid fa-bell text-cyan-400"></i><span>${message}</span>`;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    let canvasAngle = 0;
+    function startCanvasRenderLoop() {
+      canvasAngle += 0.05;
+
+      machinesData.forEach(m => {
+        const canvas = document.getElementById(`canvas-cam-${m.id}`);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const w = (canvas.width = canvas.clientWidth);
+        const h = (canvas.height = canvas.clientHeight);
+
+        const timeEl = document.getElementById(`cam-timestamp-${m.id}`);
+        if (timeEl) timeEl.innerText = new Date().toLocaleTimeString();
+
+        if (!m.cameraOnline) {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = '#f87171';
+          ctx.font = '11px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('CAMERA FEED OFFLINE', w / 2, h / 2);
+          return;
+        }
+
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(0, h * 0.65, w, h * 0.2);
+
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = 2;
+        const offset = (canvasAngle * 20) % 30;
+        for (let x = -offset; x < w; x += 30) {
+          ctx.beginPath();
+          ctx.moveTo(x, h * 0.65);
+          ctx.lineTo(x + 15, h * 0.85);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(w * 0.45, 0, w * 0.1, h * 0.45);
+
+        const armSwing = Math.sin(canvasAngle + m.id) * 18;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.45);
+        ctx.lineTo(w * 0.5 + armSwing, h * 0.6);
+        ctx.stroke();
+
+        const boxX = ((canvasAngle * 30 + m.id * 80) % (w + 40)) - 20;
+        ctx.fillStyle = '#0284c7';
+        ctx.fillRect(boxX, h * 0.6, 22, 16);
+      });
+
+      requestAnimationFrame(startCanvasRenderLoop);
+    }
+
+    function startSimulationLoop() {
+      setInterval(() => {
+        machinesData.forEach(m => {
+          if (!m.autoSim) return;
+
+          if (Math.random() > 0.3) {
+            m.count += 1;
+            const el = document.getElementById(`counter-val-${m.id}`);
+            if (el) el.innerText = m.count;
+          }
+
+          const ampNoise = (Math.random() - 0.5) * 0.4;
+          const voltNoise = (Math.random() - 0.5) * 0.8;
+
+          m.amps = Math.max(0, parseFloat((m.amps + ampNoise).toFixed(1)));
+          m.volts = Math.max(80, parseFloat((m.volts + voltNoise).toFixed(1)));
+
+          const txtA = document.getElementById(`amp-text-${m.id}`);
+          const barA = document.getElementById(`amp-bar-${m.id}`);
+          if (txtA) txtA.innerText = `${m.amps.toFixed(1)} A`;
+          if (barA) barA.style.width = `${Math.min((m.amps/20)*100, 100)}%`;
+
+          const txtV = document.getElementById(`volt-text-${m.id}`);
+          const barV = document.getElementById(`volt-bar-${m.id}`);
+          if (txtV) txtV.innerText = `${m.volts.toFixed(1)} V`;
+          if (barV) barV.style.width = `${Math.min((m.volts/150)*100, 100)}%`;
+
+          evaluateDiagnostics(m.id);
+        });
+
+        updateGlobalCounters();
+      }, 1500);
+    }
+  </script>
+</body>
+</html>
